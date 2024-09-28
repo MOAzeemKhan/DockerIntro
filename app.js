@@ -4,36 +4,39 @@ const socketIo = require('socket.io');
 const app = express();
 const port = 3000;
 
-// Create a server and socket.io instance
 const server = http.createServer(app);
 const io = socketIo(server);
 
 // Serve static files from the 'public' directory
 app.use(express.static('public'));
 
-// Handle GET request for the home page
 app.get('/', (req, res) => {
   res.sendFile(__dirname + '/public/index.html');
 });
 
-// Set up Socket.io for real-time communication
-io.on('connection', (socket) => {
-  console.log('A user connected');
+// Track the number of connected users
+let users = 0;
 
-  // Handle incoming messages from the client
+io.on('connection', (socket) => {
+  users++; // Increment user count when a new user connects
+  console.log(`A user connected, total users: ${users}`);
+
+  // Broadcast to everyone that a new user has connected
+  io.emit('chat message', `A new user has joined the chat. Current users: ${users}`);
+
+  // Handle incoming messages
   socket.on('chat message', (msg) => {
-    console.log('Message: ' + msg);
-    // Broadcast the message to everyone
     io.emit('chat message', msg);
   });
 
   // Handle user disconnect
   socket.on('disconnect', () => {
-    console.log('User disconnected');
+    users--; // Decrement user count when a user disconnects
+    console.log(`A user disconnected, total users: ${users}`);
+    io.emit('chat message', `A user has left the chat. Current users: ${users}`);
   });
 });
 
-// Start the server
 server.listen(port, () => {
   console.log(`Real-time app running on port ${port}`);
 });
