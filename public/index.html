@@ -33,7 +33,6 @@
       overflow: hidden;
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
     }
 
     header {
@@ -43,6 +42,16 @@
       padding: 15px;
       font-size: 1.5em;
       font-weight: 500;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    #userCount {
+      position: absolute;
+      top: 15px;
+      right: 15px;
+      font-size: 0.9em;
     }
 
     #chat {
@@ -62,6 +71,13 @@
       border-radius: 5px;
       box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
       word-wrap: break-word;
+      position: relative;
+    }
+
+    #typingIndicator {
+      font-size: 0.85em;
+      color: #555;
+      padding: 10px;
     }
 
     form {
@@ -101,61 +117,139 @@
       background-color: #45a049;
     }
 
-    @media screen and (max-width: 480px) {
-      .chat-container {
-        width: 100%;
-        max-width: 100%;
-        height: 100vh;
-        border-radius: 0;
-      }
+    .reaction {
+      position: absolute;
+      right: 10px;
+      top: 10px;
+      cursor: pointer;
+      font-size: 0.85em;
+    }
 
-      form {
-        padding: 5px;
-      }
+    #darkModeToggle {
+      position: fixed;
+      bottom: 10px;
+      right: 10px;
+      padding: 10px;
+      background-color: #4CAF50;
+      color: white;
+      border-radius: 5px;
+      cursor: pointer;
+    }
 
-      input {
-        font-size: 0.9em;
-      }
+    .dark-mode {
+      background-color: #333;
+      color: #fff;
+    }
 
-      button {
-        padding: 8px;
-        font-size: 0.9em;
-      }
+    .dark-mode input, .dark-mode button, .dark-mode header {
+      background-color: #444;
+      color: #fff;
+    }
+
+    .dark-mode #chat {
+      background-color: #555;
+    }
+
+    .dark-mode li {
+      background-color: #666;
     }
   </style>
 </head>
 <body>
 
   <div class="chat-container">
-    <header>Chat App</header>
+    <header>Chat App <span id="userCount">Users: 0</span></header>
     <ul id="chat"></ul>
+    <p id="typingIndicator"></p>
     <form id="form" action="">
       <input id="message" autocomplete="off" placeholder="Type your message..." /><button>Send</button>
     </form>
+    <input type="file" id="mediaInput" accept="image/*">
+    <div id="darkModeToggle">Toggle Dark Mode</div>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
     const socket = io();
 
-    // When a message is submitted
-    const form = document.getElementById('form');
+    // Handle user count
+    socket.on('user count', (count) => {
+      document.getElementById('userCount').innerText = `Users: ${count}`;
+    });
+
+    // Handle typing indicator
     const input = document.getElementById('message');
+    let typing = false;
+
+    input.addEventListener('input', () => {
+      if (!typing) {
+        typing = true;
+        socket.emit('typing', true);
+      }
+      clearTimeout(input.typingTimeout);
+      input.typingTimeout = setTimeout(() => {
+        typing = false;
+        socket.emit('typing', false);
+      }, 1000);
+    });
+
+    socket.on('typing', (data) => {
+      const typingIndicator = document.getElementById('typingIndicator');
+      typingIndicator.innerText = data.isTyping ? `User ${data.id.substring(0, 5)} is typing...` : '';
+    });
+
+    // Send message
+    const form = document.getElementById('form');
     form.addEventListener('submit', function(e) {
       e.preventDefault();
       if (input.value) {
-        // Send the message to the server
         socket.emit('chat message', input.value);
         input.value = '';
+        socket.emit('typing', false);  // Stop typing indicator after sending message
       }
     });
 
     // Display incoming messages
-    socket.on('chat message', function(msg) {
+    socket.on('chat message', (data) => {
       const li = document.createElement('li');
-      li.textContent = msg;
+      li.textContent = data.id === socket.id ? `You: ${data.message}` : `User ${data.id.substring(0, 5)}: ${data.message}`;
+      const reactionButton = document.createElement('span');
+      reactionButton.className = 'reaction';
+      reactionButton.textContent = '❤️';
+      reactionButton.onclick = () => socket.emit('react', { id: data.id, reaction: '❤️' });
+      li.appendChild(reactionButton);
       document.getElementById('chat').appendChild(li);
       window.scrollTo(0, document.body.scrollHeight);
+    });
+
+    // Display reactions
+    socket.on('react', (reaction) => {
+      const reactionMessage = document.createElement('p');
+      reactionMessage.textContent = `User reacted with ${reaction.reaction}`;
+      document.getElementById('chat').appendChild(reactionMessage);
+    });
+
+    // Media sharing
+    const mediaInput = document.getElementById('mediaInput');
+    mediaInput.addEventListener('change', function() {
+      const file = mediaInput.files[0];
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        socket.emit('media', e.target.result);
+      };
+      reader.readAsDataURL(file);
+    });
+
+    socket.on('media', (data) => {
+      const li = document.createElement('li');
+      li.innerHTML = data.id === socket.id ? `You: <img src="${data.mediaUrl}" alt="shared image" width="100">` : `User ${data.id.substring(0, 5)}: <img src="${data.mediaUrl}" alt="shared image" width="100">`;
+      document.getElementById('chat').appendChild(li);
+    });
+
+    // Dark mode toggle
+    const darkModeToggle = document.getElementById('darkModeToggle');
+    darkModeToggle.addEventListener('click', () => {
+      document.body.classList.toggle('dark-mode');
     });
   </script>
 

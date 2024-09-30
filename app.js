@@ -7,33 +7,41 @@ const port = 3000;
 const server = http.createServer(app);
 const io = socketIo(server);
 
-// Serve static files from the 'public' directory
-app.use(express.static('public'));
-
-app.get('/', (req, res) => {
-  res.sendFile(__dirname + '/public/index.html');
+app.use((req, res, next) => {
+    res.setHeader('ngrok-skip-browser-warning', 'true');
+    next();
 });
 
-// Track the number of connected users
+app.use(express.static('public'));
+
 let users = 0;
 
 io.on('connection', (socket) => {
-  users++; // Increment user count when a new user connects
-  console.log(`A user connected, total users: ${users}`);
+  users++;
+  io.emit('user count', users);
 
-  // Broadcast to everyone that a new user has connected
-  io.emit('chat message', `A new user has joined the chat. Current users: ${users}`);
-
-  // Handle incoming messages
-  socket.on('chat message', (msg) => {
-    io.emit('chat message', msg);
+  // Handle typing indicator
+  socket.on('typing', (isTyping) => {
+    socket.broadcast.emit('typing', { id: socket.id, isTyping });
   });
 
-  // Handle user disconnect
+  socket.on('chat message', (msg) => {
+    io.emit('chat message', { id: socket.id, message: msg });
+  });
+
+  // Handle media sharing
+  socket.on('media', (mediaUrl) => {
+    io.emit('media', { id: socket.id, mediaUrl });
+  });
+
+  // Handle message reactions
+  socket.on('react', (reaction) => {
+    io.emit('react', reaction);
+  });
+
   socket.on('disconnect', () => {
-    users--; // Decrement user count when a user disconnects
-    console.log(`A user disconnected, total users: ${users}`);
-    io.emit('chat message', `A user has left the chat. Current users: ${users}`);
+    users--;
+    io.emit('user count', users);
   });
 });
 
